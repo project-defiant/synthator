@@ -97,15 +97,11 @@ class VariantBatchGenerator:
         :return: Generator yielding IntervalVariantBatch instances.
         """
 
-        for batch_id, variant_list in (
-            cls._aggregate_variants_by_batch(variant_index, batch_window)
-            .collect()
-            .iter_rows()
-        ):
+        collected = cls._aggregate_variants_by_batch(variant_index, batch_window).collect()
+        assert isinstance(collected, pl.DataFrame)
+        for batch_id, variant_list in collected.iter_rows():
             # slowest part of the code, we could consider parallelizing this in the future
-            logger.debug(
-                f"Processing batch {batch_id} with {len(variant_list)} variants."
-            )
+            logger.debug(f"Processing batch {batch_id} with {len(variant_list)} variants.")
             interval_variants = []
             for v in variant_list:
                 iv = ContextualizedVariant.from_variant(
@@ -117,14 +113,10 @@ class VariantBatchGenerator:
                     batch_id=batch_id,
                 )
                 interval_variants.append(iv)
-            yield ContextualizedVariantBatch(
-                interval_variants=interval_variants, batch_id=batch_id
-            )
+            yield ContextualizedVariantBatch(interval_variants=interval_variants, batch_id=batch_id)
 
 
-def annotate_batch(
-    api_key: str, c_variants: ContextualizedVariantBatch
-) -> list[list[ad.Anndata]]:
+def annotate_batch(api_key: str, c_variants: ContextualizedVariantBatch) -> list[list[ad.Anndata]]:
     """Annotate a batch of variants with DNA client scores.
 
     :param api_key: API key for the DNA client.
@@ -149,13 +141,15 @@ def transform_batch(annotation_result: list[list[ad.AnnData]]) -> pl.DataFrame:
 
     :return: Polars DataFrame containing the transformed annotations for each variant.
     """
-    data = pl.DataFrame(variant_scorers.tidy_scores(annotation_result))
-    return data
+    data = variant_scorers.tidy_scores(annotation_result)
+    assert data is not None, "No data returned from variant scorers."
+    data["variant_id"] = data["variant_id"].astype(str)
+    data["scored_interval"] = data["scored_interval"].astype(str)
+    d = pl.DataFrame(data)
+    return d
 
 
-def write_batch(
-    transformed_batch: pl.DataFrame, output_path: str, batch_id: str
-) -> None:
+def write_batch(transformed_batch: pl.DataFrame, output_path: str, batch_id: str) -> None:
     """Write the transformed batch of annotations to a specified output path.
 
     :param transformed_batch: Polars DataFrame containing the transformed annotations for each variant.
@@ -169,9 +163,7 @@ def write_batch(
     transformed_batch.write_parquet(f"{output_path}/batch_{batch_id}.parquet")
 
 
-def process_batch(
-    api_key: str, c_variants: ContextualizedVariantBatch, output_path: str
-) -> None:
+def process_batch(api_key: str, c_variants: ContextualizedVariantBatch, output_path: str) -> None:
     """Process a batch of contextualized variants by annotating them and transforming the results.
 
     :param api_key: API key for the DNA client.

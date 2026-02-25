@@ -4,3 +4,6 @@ my_file.pickle
 .venv
 data
 __pycache__
+.coverage
+covarage.xml
+.pytest_cache

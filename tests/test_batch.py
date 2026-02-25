@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import ANY, MagicMock, call, patch
 
+import pandas as pd
 import polars as pl
 import pytest
 
@@ -201,27 +202,52 @@ class TestAnnotateBatch:
 
 
 class TestTransformBatch:
-    def test_returns_polars_dataframe(self) -> None:
-        tidy_data = {"col_a": [1, 2], "col_b": ["x", "y"]}
-        with patch("synthator.batch.variant_scorers.tidy_scores", return_value=tidy_data):
+    @pytest.fixture()
+    def tidy_pd(self) -> pd.DataFrame:
+        """Minimal pandas DataFrame matching real tidy_scores output."""
+        return pd.DataFrame(
+            {
+                "variant_id": [123, 456],       # int — will be cast to str
+                "scored_interval": [789, 101],  # int — will be cast to str
+                "raw_score": [0.1, 0.2],
+            }
+        )
+
+    def test_returns_polars_dataframe(self, tidy_pd: pd.DataFrame) -> None:
+        with patch("synthator.batch.variant_scorers.tidy_scores", return_value=tidy_pd):
             result = transform_batch([[MagicMock()]])
 
         assert isinstance(result, pl.DataFrame)
 
-    def test_calls_tidy_scores(self) -> None:
+    def test_calls_tidy_scores(self, tidy_pd: pd.DataFrame) -> None:
         annotation = [[MagicMock()]]
-        tidy_data = {"col_a": [1]}
-        with patch("synthator.batch.variant_scorers.tidy_scores", return_value=tidy_data) as mock_tidy:
+        with patch("synthator.batch.variant_scorers.tidy_scores", return_value=tidy_pd) as mock_tidy:
             transform_batch(annotation)
 
         mock_tidy.assert_called_once_with(annotation)
 
-    def test_dataframe_columns_from_tidy(self) -> None:
-        tidy_data = {"score": [0.5], "gene": ["TP53"]}
-        with patch("synthator.batch.variant_scorers.tidy_scores", return_value=tidy_data):
+    def test_dataframe_columns_from_tidy(self, tidy_pd: pd.DataFrame) -> None:
+        with patch("synthator.batch.variant_scorers.tidy_scores", return_value=tidy_pd):
             result = transform_batch([[MagicMock()]])
 
-        assert set(result.columns) == {"score", "gene"}
+        assert set(result.columns) == {"variant_id", "scored_interval", "raw_score"}
+
+    def test_raises_if_tidy_scores_returns_none(self) -> None:
+        with patch("synthator.batch.variant_scorers.tidy_scores", return_value=None):
+            with pytest.raises(AssertionError, match="No data returned"):
+                transform_batch([[MagicMock()]])
+
+    def test_variant_id_cast_to_string(self, tidy_pd: pd.DataFrame) -> None:
+        with patch("synthator.batch.variant_scorers.tidy_scores", return_value=tidy_pd):
+            result = transform_batch([[MagicMock()]])
+
+        assert result["variant_id"].dtype == pl.String
+
+    def test_scored_interval_cast_to_string(self, tidy_pd: pd.DataFrame) -> None:
+        with patch("synthator.batch.variant_scorers.tidy_scores", return_value=tidy_pd):
+            result = transform_batch([[MagicMock()]])
+
+        assert result["scored_interval"].dtype == pl.String
 
 
 # ---------------------------------------------------------------------------

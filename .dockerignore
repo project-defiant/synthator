@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+__pycache__
+*.py[cod]
+*.egg-info
+dist/
+build/
+tests/
+coverage.xml
+.coverage
+*.md
+!README.md
