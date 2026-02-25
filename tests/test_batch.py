@@ -38,18 +38,24 @@ class TestContextualizedVariantBatch:
         batch = ContextualizedVariantBatch(interval_variants=[], batch_id="chr1_0")
         assert batch.interval_variants == []
 
-    def test_append_variant_increments_count(self, mock_contextualized_variant: ContextualizedVariant) -> None:
+    def test_append_variant_increments_count(
+        self, mock_contextualized_variant: ContextualizedVariant
+    ) -> None:
         batch = ContextualizedVariantBatch(interval_variants=[], batch_id="chr1_0")
         batch.append_variant(mock_contextualized_variant)
         assert batch.n_variants == 1
 
-    def test_append_variant_twice_increments_twice(self, mock_contextualized_variant: ContextualizedVariant) -> None:
+    def test_append_variant_twice_increments_twice(
+        self, mock_contextualized_variant: ContextualizedVariant
+    ) -> None:
         batch = ContextualizedVariantBatch(interval_variants=[], batch_id="chr1_0")
         batch.append_variant(mock_contextualized_variant)
         batch.append_variant(mock_contextualized_variant)
         assert batch.n_variants == 2
 
-    def test_append_variant_adds_to_list(self, mock_contextualized_variant: ContextualizedVariant) -> None:
+    def test_append_variant_adds_to_list(
+        self, mock_contextualized_variant: ContextualizedVariant
+    ) -> None:
         batch = ContextualizedVariantBatch(interval_variants=[], batch_id="chr1_0")
         batch.append_variant(mock_contextualized_variant)
         assert mock_contextualized_variant in batch.interval_variants
@@ -170,7 +176,9 @@ class TestAnnotateBatch:
         client.score_variants.return_value = mock_result
         return client, mock_result
 
-    def test_calls_score_variants(self, mock_batch: ContextualizedVariantBatch, mock_client) -> None:
+    def test_calls_score_variants(
+        self, mock_batch: ContextualizedVariantBatch, mock_client
+    ) -> None:
         client, _ = mock_client
         with patch("alphagenome.models.dna_client.create", return_value=client):
             annotate_batch(api_key="test-key", c_variants=mock_batch)
@@ -181,14 +189,18 @@ class TestAnnotateBatch:
             variants=expected_variants, intervals=expected_intervals
         )
 
-    def test_returns_score_variants_result(self, mock_batch: ContextualizedVariantBatch, mock_client) -> None:
+    def test_returns_score_variants_result(
+        self, mock_batch: ContextualizedVariantBatch, mock_client
+    ) -> None:
         client, mock_result = mock_client
         with patch("alphagenome.models.dna_client.create", return_value=client):
             result = annotate_batch(api_key="test-key", c_variants=mock_batch)
 
         assert result is mock_result
 
-    def test_creates_client_with_api_key(self, mock_batch: ContextualizedVariantBatch, mock_client) -> None:
+    def test_creates_client_with_api_key(
+        self, mock_batch: ContextualizedVariantBatch, mock_client
+    ) -> None:
         client, _ = mock_client
         with patch("alphagenome.models.dna_client.create", return_value=client) as mock_create:
             annotate_batch(api_key="my-secret-key", c_variants=mock_batch)
@@ -207,7 +219,7 @@ class TestTransformBatch:
         """Minimal pandas DataFrame matching real tidy_scores output."""
         return pd.DataFrame(
             {
-                "variant_id": [123, 456],       # int — will be cast to str
+                "variant_id": [123, 456],  # int — will be cast to str
                 "scored_interval": [789, 101],  # int — will be cast to str
                 "raw_score": [0.1, 0.2],
             }
@@ -221,7 +233,9 @@ class TestTransformBatch:
 
     def test_calls_tidy_scores(self, tidy_pd: pd.DataFrame) -> None:
         annotation = [[MagicMock()]]
-        with patch("synthator.batch.variant_scorers.tidy_scores", return_value=tidy_pd) as mock_tidy:
+        with patch(
+            "synthator.batch.variant_scorers.tidy_scores", return_value=tidy_pd
+        ) as mock_tidy:
             transform_batch(annotation)
 
         mock_tidy.assert_called_once_with(annotation)
@@ -300,7 +314,9 @@ class TestWriteBatch:
 
 
 class TestProcessBatch:
-    def test_calls_annotate_transform_write_in_order(self, mock_batch: ContextualizedVariantBatch) -> None:
+    def test_calls_annotate_transform_write_in_order(
+        self, mock_batch: ContextualizedVariantBatch
+    ) -> None:
         mock_df = pl.DataFrame({"x": [1]})
         call_order: list[str] = []
 
@@ -324,7 +340,9 @@ class TestProcessBatch:
 
         assert call_order == ["annotate", "transform", "write"]
 
-    def test_annotate_called_with_correct_args(self, mock_batch: ContextualizedVariantBatch) -> None:
+    def test_annotate_called_with_correct_args(
+        self, mock_batch: ContextualizedVariantBatch
+    ) -> None:
         mock_df = pl.DataFrame({"x": [1]})
         with (
             patch("synthator.batch.annotate_batch", return_value=[[MagicMock()]]) as mock_ann,

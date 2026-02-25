@@ -103,13 +103,9 @@ class VariantSchema:
             VariantField.CSQ.value: pl.List(
                 pl.Struct(
                     [
-                        pl.Field(
-                            TranscriptConsequenceField.CID.value, pl.List(pl.Utf8)
-                        ),
+                        pl.Field(TranscriptConsequenceField.CID.value, pl.List(pl.Utf8)),
                         pl.Field(TranscriptConsequenceField.AAC.value, pl.Utf8),
-                        pl.Field(
-                            TranscriptConsequenceField.UID.value, pl.List(pl.Utf8)
-                        ),
+                        pl.Field(TranscriptConsequenceField.UID.value, pl.List(pl.Utf8)),
                         pl.Field(TranscriptConsequenceField.IEC.value, pl.Boolean),
                         pl.Field(TranscriptConsequenceField.CND.value, pl.Utf8),
                         pl.Field(TranscriptConsequenceField.DFP.value, pl.Int64),

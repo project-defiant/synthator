@@ -34,7 +34,9 @@ def mock_variant(mock_interval: MagicMock) -> MagicMock:
 
 
 @pytest.fixture()
-def mock_contextualized_variant(mock_interval: MagicMock, mock_variant: MagicMock) -> ContextualizedVariant:
+def mock_contextualized_variant(
+    mock_interval: MagicMock, mock_variant: MagicMock
+) -> ContextualizedVariant:
     return ContextualizedVariant(interval=mock_interval, variant=mock_variant)
 
 

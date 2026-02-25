@@ -82,9 +82,7 @@ def _invoke(dummy_index: Path, extra_args: list[str] | None = None, *, strict: b
 
 
 class TestCliTestMode:
-    def test_test_mode_processes_exactly_two_batches(
-        self, cli_patches: tuple
-    ) -> None:
+    def test_test_mode_processes_exactly_two_batches(self, cli_patches: tuple) -> None:
         dummy_index, mock_process = cli_patches
         batches = _make_mock_batches(5)
 
@@ -98,9 +96,7 @@ class TestCliTestMode:
         assert result.exit_code == 0, f"CLI error: {result.exception!r}\n{result.output}"
         assert mock_process.call_count == 2
 
-    def test_no_test_mode_processes_all_batches(
-        self, cli_patches: tuple
-    ) -> None:
+    def test_no_test_mode_processes_all_batches(self, cli_patches: tuple) -> None:
         dummy_index, mock_process = cli_patches
         batches = _make_mock_batches(4)
 
@@ -114,9 +110,7 @@ class TestCliTestMode:
         assert result.exit_code == 0, f"CLI error: {result.exception!r}\n{result.output}"
         assert mock_process.call_count == 4
 
-    def test_fewer_than_two_batches_processes_all(
-        self, cli_patches: tuple
-    ) -> None:
+    def test_fewer_than_two_batches_processes_all(self, cli_patches: tuple) -> None:
         dummy_index, mock_process = cli_patches
         batches = _make_mock_batches(1)
 
@@ -147,7 +141,13 @@ class TestCliArguments:
         ):
             strict_runner.invoke(
                 app,
-                ["--variant-index-path", str(dummy_index), "--api-key", "my-real-key", "--no-test-mode"],
+                [
+                    "--variant-index-path",
+                    str(dummy_index),
+                    "--api-key",
+                    "my-real-key",
+                    "--no-test-mode",
+                ],
             )
 
         assert mock_process.call_args.kwargs["api_key"] == "my-real-key"
@@ -165,9 +165,12 @@ class TestCliArguments:
             strict_runner.invoke(
                 app,
                 [
-                    "--variant-index-path", str(dummy_index),
-                    "--api-key", "key",
-                    "--output", custom_output,
+                    "--variant-index-path",
+                    str(dummy_index),
+                    "--api-key",
+                    "key",
+                    "--output",
+                    custom_output,
                     "--no-test-mode",
                 ],
             )
@@ -185,9 +188,12 @@ class TestCliArguments:
             strict_runner.invoke(
                 app,
                 [
-                    "--variant-index-path", str(dummy_index),
-                    "--api-key", "key",
-                    "--batch-window", "25",
+                    "--variant-index-path",
+                    str(dummy_index),
+                    "--api-key",
+                    "key",
+                    "--batch-window",
+                    "25",
                     "--no-test-mode",
                 ],
             )

@@ -59,16 +59,8 @@ def scored_interval_to_interval_struct(scored_interval: pl.Expr) -> pl.Expr:
         .str.replace("chr", "")
         .str.replace("^M$", "MT")
         .cast(pl.Categorical()),
-        start=scored_interval.str.split(":")
-        .list.get(1)
-        .str.split("-")
-        .list.get(0)
-        .cast(pl.Int64),
-        end=scored_interval.str.split(":")
-        .list.get(1)
-        .str.split("-")
-        .list.get(1)
-        .cast(pl.Int64),
+        start=scored_interval.str.split(":").list.get(1).str.split("-").list.get(0).cast(pl.Int64),
+        end=scored_interval.str.split(":").list.get(1).str.split("-").list.get(1).cast(pl.Int64),
     ).alias("interval")
 
 
@@ -81,12 +73,7 @@ def parse_variant_id(variant_id: pl.Expr) -> pl.Expr:
 
     :return: Polars expression containing the parsed components of the variant ID.
     """
-    chr = (
-        variant_id.str.split(":")
-        .list.get(0)
-        .str.replace("chr", "")
-        .str.replace("^M$", "MT")
-    )
+    chr = variant_id.str.split(":").list.get(0).str.replace("chr", "").str.replace("^M$", "MT")
     pos = variant_id.str.split(":").list.get(1)
     ref = variant_id.str.split(":").list.get(2).str.split(">").list.get(0)
     alt = variant_id.str.split(":").list.get(2).str.split(">").list.get(1)

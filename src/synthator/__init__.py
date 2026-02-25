@@ -17,17 +17,16 @@ app = typer.Typer()
 def cli(
     variant_index_path: Annotated[
         str,
-        typer.Option(help="Path to variant index. Supports local paths and GCS globs (gs://bucket/path/*.parquet)."),
+        typer.Option(
+            help="Path to variant index. Supports local paths and GCS globs (gs://bucket/path/*.parquet)."
+        ),
     ],
     api_key: Annotated[str, typer.Option(help="API key.")],
-    context_window: Annotated[
-        int, typer.Option(help="Sequence length to use for predictions.")
-    ] = 2**20,
+    context_window: Annotated[int, typer.Option(help="Sequence length to use for predictions.")] = 2
+    ** 20,
     output: Annotated[
         str,
-        typer.Option(
-            help="Output path. Supports local paths and GCS (gs://bucket/path)."
-        ),
+        typer.Option(help="Output path. Supports local paths and GCS (gs://bucket/path)."),
     ] = "data/alphagenome",
     test_mode: Annotated[
         bool,
@@ -40,9 +39,7 @@ def cli(
 
     logger.info(f"Using variant index from {variant_index_path}")
     logger.info(f"Using output path {output}")
-    _cw = dna_client.SUPPORTED_SEQUENCE_LENGTHS.get(
-        "SEQUENCE_LENGTH_1MB", context_window
-    )
+    _cw = dna_client.SUPPORTED_SEQUENCE_LENGTHS.get("SEQUENCE_LENGTH_1MB", context_window)
     _v = pl.scan_parquet(variant_index_path, schema=VariantSchema.schema)
 
     logger.success("Loaded variant index.")
