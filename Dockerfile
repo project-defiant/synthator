@@ -27,9 +27,12 @@ FROM python:3.12.11-slim-trixie AS production
 RUN groupadd --gid 1000 app && \
     useradd --uid 1000 --gid app --shell /bin/bash --create-home app
 # Add ps 
-RUN apt-get update 
+RUN apt-get update && \
+    apt-get install -y procps && \
+    rm -rf /var/lib/apt/lists/*
 # Copy the application code from the builder stage
 COPY --from=uv_builder --chown=app:app /app /app
+
 
 # Configure PATH to use the virtual environment's binaries
 ENV PATH="/app/.venv/bin:$PATH"
