@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Annotated
 
 import polars as pl
@@ -16,7 +15,10 @@ app = typer.Typer()
 
 @app.command("alpha-genome")
 def cli(
-    variant_index_path: Annotated[Path, typer.Option(help="Path to variant index.")],
+    variant_index_path: Annotated[
+        str,
+        typer.Option(help="Path to variant index. Supports local paths and GCS globs (gs://bucket/path/*.parquet)."),
+    ],
     api_key: Annotated[str, typer.Option(help="API key.")],
     context_window: Annotated[
         int, typer.Option(help="Sequence length to use for predictions.")

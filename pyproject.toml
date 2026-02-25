@@ -32,9 +32,26 @@ dev = [
     "debugpy>=1.8.20",
     "ipython>=9.10.0",
     "pytest>=9.0.2",
+    "pytest-cov>=6.0",
     "ruff>=0.15.2",
     "ty>=0.0.18",
 ]
 
 [project.scripts]
 synthator = "synthator:app"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=synthator --cov-report=term-missing --cov-report=xml"
+
+[tool.coverage.run]
+source = ["synthator"]
+
+[tool.coverage.report]
+fail_under = 60
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

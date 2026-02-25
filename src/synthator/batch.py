@@ -164,7 +164,8 @@ def write_batch(
 
     :return: None
     """
-    Path(output_path).mkdir(parents=True, exist_ok=True)
+    if "://" not in output_path:
+        Path(output_path).mkdir(parents=True, exist_ok=True)
     transformed_batch.write_parquet(f"{output_path}/batch_{batch_id}.parquet")
 
 
