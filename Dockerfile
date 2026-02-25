@@ -1,38 +1,30 @@
-# syntax=docker/dockerfile:1
-# ---------------------------------------------------------------------------
-# Stage 1: build
-# ---------------------------------------------------------------------------
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS uv_builder
-
-ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=0
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        git \
-        build-essential \
-        python3-dev \
-    && rm -rf /var/lib/apt/lists/*
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
+# Disable python downloads to use the one from the base image
+ENV UV_PYTHON_DOWNLOADS=0
+RUN apt-get update && apt-get install -y git
 
 WORKDIR /app
 
-COPY uv.lock pyproject.toml README.md ./
-COPY src/ src/
-
+COPY src /app/src
+COPY README.md /app/README.md
+COPY LICENCE.md /app/LICENCE.md
+COPY pyproject.toml /app/pyproject.toml
+COPY uv.lock /app/uv.lock
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev
 
-# ---------------------------------------------------------------------------
-# Stage 2: runtime
-# ---------------------------------------------------------------------------
-FROM python:3.12-slim AS runtime
 
+FROM python:3.12.11-slim-trixie AS production
+# Create app user and group
 RUN groupadd --gid 1000 app && \
     useradd --uid 1000 --gid app --shell /bin/bash --create-home app
-
+# Add ps 
+RUN apt-get update 
+# Copy the application code from the builder stage
 COPY --from=uv_builder --chown=app:app /app /app
 
-ENV PATH="/app/.venv/bin:$PATH" \
-    PYTHONUNBUFFERED=1
-
-USER app
-
-ENTRYPOINT ["synthator"]
+# Configure PATH to use the virtual environment's binaries
+ENV PATH="/app/.venv/bin:$PATH"
+# Set environment variables for PySpark and Hail locations
+CMD ["bin/bash"]

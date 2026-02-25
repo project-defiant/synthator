@@ -9,5 +9,4 @@ build/
 tests/
 coverage.xml
 .coverage
-*.md
 !README.md
