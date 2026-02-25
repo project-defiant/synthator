@@ -2,7 +2,14 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS uv_builder
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 # Disable python downloads to use the one from the base image
 ENV UV_PYTHON_DOWNLOADS=0
-RUN apt-get update && apt-get install -y git
+RUN apt-get update && apt-get install -y \
+    git \
+    build-essential \
+    gcc \
+    pkg-config \
+    libcurl4-openssl-dev \
+    zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

@@ -5,6 +5,7 @@ description = "Annotate variant index with Models."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "ag>=1.0",
     "alphagenome-research",
     "anndata>=0.12.9",
     "loguru>=0.7.3",
@@ -14,9 +15,6 @@ dependencies = [
 [build-system]
 requires = ["uv_build>=0.10.3,<0.11.0"]
 build-backend = "uv_build"
-
-[tool.uv.sources]
-alphagenome-research = { git = "https://github.com/google-deepmind/alphagenome_research.git" }
 
 [dependency-groups]
 dev = [
@@ -46,3 +44,6 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+
+[tool.uv.sources]
+alphagenome-research = { git = "https://github.com/google-deepmind/alphagenome_research.git" }
