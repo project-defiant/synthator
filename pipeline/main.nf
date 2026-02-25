@@ -6,7 +6,7 @@ nextflow.enable.dsl = 2
 // ---------------------------------------------------------------------------
 
 process SCORE_PARTITION {
-    tag partition.name
+    tag "${partition.name}"
     label 'synthator'
 
     publishDir params.output, mode: 'copy'
@@ -43,14 +43,11 @@ workflow {
     if (!params.output) {
         error("Missing required parameter: --output  (e.g. gs://bucket/results/)")
     }
-    if (!params.container) {
-        error("Missing required parameter: --container  (e.g. us-docker.pkg.dev/PROJECT/REPO/synthator:latest)")
-    }
 
     // Build channel — one item per Spark partition file
     def index_base = params.variant_index.replaceAll('/+$', '')
 
-    def partitions_ch = channel.fromPath("${index_base}/part.*.parquet")
+    def partitions_ch = channel.fromPath("${index_base}/*.parquet")
         .ifEmpty { error("No part.*.parquet files found at: ${index_base}") }
 
     SCORE_PARTITION(partitions_ch)

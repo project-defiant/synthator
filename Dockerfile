@@ -1,40 +1,38 @@
 # syntax=docker/dockerfile:1
 # ---------------------------------------------------------------------------
-# Stage 1: build — install dependencies into an isolated venv
+# Stage 1: build
 # ---------------------------------------------------------------------------
-FROM python:3.12-slim AS builder
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS uv_builder
 
-# git: resolve the alphagenome-research git dependency
-# build-essential / python3-dev: compile C extensions (ncls via pyranges)
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=0
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
         build-essential \
         python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+WORKDIR /app
 
-WORKDIR /build
-
-# Copy lock file and project metadata first for layer caching
 COPY uv.lock pyproject.toml README.md ./
 COPY src/ src/
 
-# Install production dependencies only into /build/.venv
-RUN uv sync --frozen --no-group dev
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-dev
 
 # ---------------------------------------------------------------------------
-# Stage 2: runtime — minimal image with the installed venv
+# Stage 2: runtime
 # ---------------------------------------------------------------------------
 FROM python:3.12-slim AS runtime
 
-WORKDIR /app
+RUN groupadd --gid 1000 app && \
+    useradd --uid 1000 --gid app --shell /bin/bash --create-home app
 
-# Copy the fully-built venv from the builder stage
-COPY --from=builder /build/.venv /app/.venv
+COPY --from=uv_builder --chown=app:app /app /app
 
-# Put the venv on PATH
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
+
+USER app
 
 ENTRYPOINT ["synthator"]

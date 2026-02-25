@@ -7,3 +7,7 @@ __pycache__
 .coverage
 covarage.xml
 .pytest_cache
+
+.nextflow
+.nextflow.log
+.nextflow.log*
