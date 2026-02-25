@@ -1,13 +1,7 @@
 """Transformation utilities for synthator."""
 
-from typing import OrderedDict, Protocol
-
 import polars as pl
-from alphagenome.data.genome import Interval, Variant
-from alphagenome.models.dna_output import OutputType
-from alphagenome.models.variant_scorers import BaseVariantScorer
-from anndata import AnnData
-from loguru import logger
+from alphagenome.data.genome import Variant
 
 
 def variant_to_variant_id(v: Variant) -> str:
@@ -50,224 +44,293 @@ def ucsc_to_ensembl(chromosome: str) -> str:
     return chromosome.removeprefix("chr")
 
 
-class Formatter(Protocol):
-    def format(self, annotation_result: AnnData) -> pl.DataFrame:
-        """Format the annotation result into a Polars DataFrame.
+def scored_interval_to_interval_struct(scored_interval: pl.Expr) -> pl.Expr:
+    """Convert a scored interval string to an Interval struct.
 
-        :param annotation_result: Anndata object containing the annotations for each variant.
+    The scored interval string is in the format: "chr{chromosome}_{start}_{end}".
 
-        :return: Polars DataFrame containing the formatted annotations for each variant.
-        """
-        _obs = self._transform_obs(annotation_result)
-        _var = self._transform_var(annotation_result)
-        _uns = self._transform_uns(annotation_result)
-        _x = self._transform_X(annotation_result)
+    :param scored_interval: Polars expression containing the scored interval string.
 
-        if _x.is_empty():
-            logger.error(f"Annotation failed for {_uns}.")
-            return _x
+    :return: Polars expression containing the Interval struct.
+    """
+    return pl.struct(
+        chromosome=scored_interval.str.split(":")
+        .list.get(0)
+        .str.replace("chr", "")
+        .str.replace("^M$", "MT")
+        .cast(pl.Categorical()),
+        start=scored_interval.str.split(":")
+        .list.get(1)
+        .str.split("-")
+        .list.get(0)
+        .cast(pl.Int64),
+        end=scored_interval.str.split(":")
+        .list.get(1)
+        .str.split("-")
+        .list.get(1)
+        .cast(pl.Int64),
+    ).alias("interval")
 
-        _x_obs = self._merge_x_and_obs(_x, _obs)
-        _x_obs_var = self._merge_x_obs_and_var(_x_obs, _var, _obs)
-        if not _obs.is_empty():
-            _original_obs_schema = _obs.schema
-            _x_obs_var = self._rescue_original_obs(
-                fields=_original_obs_schema, _x_obs_var=_x_obs_var
-            )
-        _final = _x_obs_var.join(_uns, how="cross")
 
-        return _final
+def parse_variant_id(variant_id: pl.Expr) -> pl.Expr:
+    """Parse a variant ID string into its components.
 
-    def _rescue_original_obs(
-        self, fields: OrderedDict, _x_obs_var: pl.DataFrame
-    ) -> pl.DataFrame:
-        """Rescue the original obs columns if they were unpivoted during the merge.
+    The variant ID is in the format: "chr{chromosome}_{position}_{reference_bases}_{alternate_bases}".
 
-        :param fields: List of original obs column names.
-        :param _x_obs_var: Polars DataFrame containing the merged X, obs, and var data.
+    :param variant_id: Polars expression containing the variant ID string.
 
-        :return: Polars DataFrame with the original obs columns rescued.
-        """
-        _split = pl.col("featureName").str.split("|").alias("featureName")
-        _original_cols = [
-            _split.list.get(i).alias(name) for i, name in enumerate(fields)
-        ]
-        _x_obs_var_unnested = _x_obs_var.with_columns(_original_cols).with_columns(
-            featureName=pl.lit("gene")
+    :return: Polars expression containing the parsed components of the variant ID.
+    """
+    chr = (
+        variant_id.str.split(":")
+        .list.get(0)
+        .str.replace("chr", "")
+        .str.replace("^M$", "MT")
+    )
+    pos = variant_id.str.split(":").list.get(1)
+    ref = variant_id.str.split(":").list.get(2).str.split(">").list.get(0)
+    alt = variant_id.str.split(":").list.get(2).str.split(">").list.get(1)
+    return pl.concat_str(chr, pos, ref, alt, separator="_").alias("variant_id")
+
+
+def parse_scorer(scorer: pl.Expr) -> pl.Expr:
+    """Parse a variant scorer string into its components.
+
+    Handles patterns like:
+      CenterMaskScorer(requested_output=CHIP_TF, width=501, aggregation_type=ACTIVE_SUM)
+      GeneMaskActiveScorer(requested_output=RNA_SEQ)
+      SpliceJunctionScorer()
+
+    :param scorer: Polars expression containing the scorer string.
+
+    :return: Polars expression containing a struct with fields:
+             scorerName, requestedOutput, width, aggregationType.
+    """
+    scorer_name = scorer.str.extract(r"^(\w+)\(", 1)
+    requested_output = scorer.str.extract(r"requested_output=(\w+)", 1)
+    width = scorer.str.extract(r"width=(\d+)", 1).cast(pl.Int32)
+    aggregation_type = scorer.str.extract(r"aggregation_type=(\w+)", 1)
+    return pl.struct(
+        scorerName=scorer_name,
+        requestedOutput=requested_output,
+        width=width,
+        aggregationType=aggregation_type,
+    )
+
+
+def transform_junction_based_features(
+    gene_id: pl.Expr,
+    gene_name: pl.Expr,
+    gene_type: pl.Expr,
+    gene_strand: pl.Expr,
+    junction_start: pl.Expr,
+    junction_end: pl.Expr,
+    quantile_score: pl.Expr,
+    raw_score: pl.Expr,
+    variant_scorer: pl.Expr,
+) -> pl.Expr:
+    return pl.struct(
+        geneId=gene_id,
+        geneSymbol=gene_name,
+        geneType=gene_type,
+        geneStrand=gene_strand,
+        junctionStart=junction_start,
+        junctionEnd=junction_end,
+        quantileScore=quantile_score,
+        rawScore=raw_score,
+        variantScorer=variant_scorer,
+    ).alias("spliceJunctionFeatures")
+
+
+def transform_gene_based_features(
+    gene_id: pl.Expr,
+    gene_name: pl.Expr,
+    gene_type: pl.Expr,
+    gene_strand: pl.Expr,
+    quantile_score: pl.Expr,
+    raw_score: pl.Expr,
+    variant_scorer: pl.Expr,
+) -> pl.Expr:
+    return pl.struct(
+        geneId=gene_id,
+        geneSymbol=gene_name,
+        geneType=gene_type,
+        geneStrand=gene_strand,
+        quantileScore=quantile_score,
+        rawScore=raw_score,
+        variantScorer=variant_scorer,
+    ).alias("geneBasedFeatures")
+
+
+def transform_variant_based_features(
+    quantile_score: pl.Expr,
+    raw_score: pl.Expr,
+    variant_scorer: pl.Expr,
+) -> pl.Expr:
+    return pl.struct(
+        quantileScore=quantile_score,
+        rawScore=raw_score,
+        variantScorer=variant_scorer,
+    ).alias("variantBasedFeatures")
+
+
+def capture_metadata(
+    track_name: pl.Expr,
+    track_strand: pl.Expr,
+    assay_title: pl.Expr,
+    transcription_factor: pl.Expr,
+    histone_mark: pl.Expr,
+    endedness: pl.Expr,
+) -> pl.Expr:
+    return pl.struct(
+        trackName=track_name,
+        trackStrand=track_strand,
+        assayTitle=assay_title,
+        transcriptionFactor=transcription_factor,
+        histoneMark=histone_mark,
+        endedness=endedness,
+    ).alias("trackMetadata")
+
+
+def capture_biosample(
+    ontology_curie: pl.Expr,
+    biosample_name: pl.Expr,
+    biosample_type: pl.Expr,
+    biosample_life_stage: pl.Expr,
+    gtex_tissue: pl.Expr,
+    genetically_modified: pl.Expr,
+) -> pl.Expr:
+    return pl.struct(
+        ontologyCurie=ontology_curie,
+        biosampleName=biosample_name,
+        biosampleType=biosample_type,
+        biosampleLifeStage=biosample_life_stage,
+        gtexTissue=gtex_tissue,
+        geneticallyModified=genetically_modified,
+    ).alias("biosampleMetadata")
+
+
+def transform_output(tidy_data: pl.DataFrame) -> pl.DataFrame:
+    """Transform the tidy output data from the variant scorer into a Polars DataFrame.
+
+    :param tidy_data: Polars DataFrame containing the tidy output data from the variant scorer.
+
+    :return: Polars DataFrame containing the transformed output data.
+    """
+    vsc = parse_scorer(pl.col("variant_scorer")).alias("scorer")
+    parsed_tidy_data = (
+        tidy_data.select(
+            parse_variant_id(pl.col("variant_id")).alias("variantId"),
+            scored_interval_to_interval_struct(pl.col("scored_interval")).alias(
+                "interval"
+            ),
+            pl.when(
+                pl.col("gene_id").is_not_null() & pl.col("junction_Start").is_null()
+            ).then(
+                transform_gene_based_features(
+                    pl.col("gene_id"),
+                    pl.col("gene_name"),
+                    pl.col("gene_type"),
+                    pl.col("gene_strand"),
+                    pl.col("quantile_score"),
+                    pl.col("raw_score"),
+                    vsc,
+                )
+            ),
+            pl.when(
+                pl.col("gene_id").is_not_null() & pl.col("junction_Start").is_not_null()
+            ).then(
+                transform_junction_based_features(
+                    pl.col("gene_id"),
+                    pl.col("gene_name"),
+                    pl.col("gene_type"),
+                    pl.col("gene_strand"),
+                    pl.col("junction_Start"),
+                    pl.col("junction_End"),
+                    pl.col("quantile_score"),
+                    pl.col("raw_score"),
+                    vsc,
+                )
+            ),
+            pl.when(pl.col("gene_id").is_null()).then(
+                transform_variant_based_features(
+                    pl.col("quantile_score"), pl.col("raw_score"), vsc
+                )
+            ),
+            pl.col("track_name"),
+            pl.col("track_strand"),
+            pl.col("Assay title"),
+            pl.col("transcription_factor"),
+            pl.col("histone_mark"),
+            pl.col("endedness"),
+            pl.col("ontology_curie"),
+            pl.col("biosample_name"),
+            pl.col("biosample_type"),
+            pl.col("biosample_life_stage"),
+            pl.col("gtex_tissue"),
+            pl.col("genetically_modified"),
+            pl.col("data_source").alias("dataSource"),
         )
-        return _x_obs_var_unnested
-
-    def _merge_x_obs_and_var(
-        self, _x_obs: pl.DataFrame, _var: pl.DataFrame, _obs: pl.DataFrame
-    ) -> pl.DataFrame:
-        """Add the var dataframe of the Anndata object to the final Polars DataFrame.
-
-        :param _x_obs: Polars DataFrame containing the transformed X matrix and obs dataframe for each variant.
-        :param _var: Polars DataFrame containing the transformed var dataframe for each variant.
-        :param _obs: Polars DataFrame containing the transformed obs dataframe for each variant.
-        :return: Polars DataFrame containing the var dataframe for each variant.
-        """
-        _x_obs_var = pl.concat([_var, _x_obs], how="horizontal")
-        if not _obs.is_empty():
-            _x_obs_var = _x_obs_var.unpivot(
-                on=None,
-                index=_var.columns,
-                variable_name="featureName",
-                value_name="featureValue",
-            )
-        return _x_obs_var
-
-    def _merge_x_and_obs(self, _x: pl.DataFrame, _obs: pl.DataFrame) -> pl.DataFrame:
-        """Add the obs dataframe of the Anndata object to the final Polars DataFrame.
-
-        :param _x: Polars DataFrame containing the transformed X matrix for each variant.
-        :param _obs: Polars DataFrame containing the transformed obs dataframe for each variant.
-        :return: Polars DataFrame containing the obs dataframe for each variant.
-        """
-        if _obs.is_empty():
-            # We have the variant based scores, but no gene observations.
-            _x_obs = _x.transpose(column_names=["featureValue"]).with_columns(
-                pl.lit("variant").cast(pl.Utf8).alias("featureName")
-            )
-        else:
-            _header = (
-                _obs.select(pl.concat_str(pl.col("*"), separator="|").alias("header"))
-                .to_dict(as_series=False)
-                .get("header", [])
-            )
-            _header_mapping = {
-                f"column_{i}": gene_id for i, gene_id in enumerate(_header)
-            }
-            _x_obs = _x.transpose().rename(_header_mapping)
-
-        return _x_obs
-
-    def _transform_X(self, annotation_result: AnnData) -> pl.DataFrame:
-        """Transform the X matrix of the Anndata object into a Polars DataFrame.
-
-        :param annotation_result: Anndata object containing the annotations for each variant.
-
-        :return: Polars DataFrame containing the transformed X matrix for each variant.
-        """
-        if annotation_result.X is None:
-            return pl.DataFrame()
-        return pl.DataFrame(annotation_result.X)
-
-    def _transform_obs(self, annotation_result: AnnData) -> pl.DataFrame:
-        """Transform the obs dataframe of the Anndata object into a Polars DataFrame.
-
-        :param annotation_result: Anndata object containing the annotations for each variant.
-
-        :return: Polars DataFrame containing the transformed obs dataframe for each variant.
-        """
-        return pl.DataFrame(annotation_result.obs)
-
-    def _transform_var(self, annotation_result: AnnData) -> pl.DataFrame:
-        """Transform the var dataframe of the Anndata object into a Polars DataFrame.
-
-        :param annotation_result: Anndata object containing the annotations for each variant.
-
-        :return: Polars DataFrame containing the transformed var dataframe for each variant.
-        """
-        return pl.DataFrame(annotation_result.var)
-
-    def _transform_uns(self, annotation_result: AnnData) -> pl.DataFrame:
-        """Transform the uns dictionary of the Anndata object into a Polars DataFrame.
-
-        :param annotation_result: Anndata object containing the annotations for each variant.
-
-        :return: Polars DataFrame containing the transformed uns dictionary for each variant.
-        """
-        i: Interval | None = annotation_result.uns.get("interval")
-        v: Variant | None = annotation_result.uns.get("variant")
-        vs: BaseVariantScorer | None = annotation_result.uns.get("variant_scorer")
-
-        if not i or not v or not vs:
-            raise ValueError(
-                "Missing interval, variant, or variant scorer information in Anndata uns."
-            )
-        return pl.DataFrame(
-            {
-                "variantId": [variant_to_variant_id(v)],
-                "interval": [
-                    {"start": i.start, "end": i.end, "chromosome": i.chromosome}
-                ],
-                "variantScorer": [vs.name],
-            }
+        .group_by(
+            "variantId",
+            "interval",
+            "track_name",
+            "track_strand",
+            "Assay title",
+            "transcription_factor",
+            "histone_mark",
+            "endedness",
+            "ontology_curie",
+            "biosample_name",
+            "biosample_type",
+            "biosample_life_stage",
+            "gtex_tissue",
+            "genetically_modified",
         )
+        .agg(
+            pl.col("variantBasedFeatures"),
+            pl.col("geneBasedFeatures"),
+            pl.col("spliceJunctionFeatures"),
+        )
+        .select(
+            "variantId",
+            "interval",
+            capture_biosample(
+                pl.col("ontology_curie"),
+                pl.col("biosample_name"),
+                pl.col("biosample_type"),
+                pl.col("biosample_life_stage"),
+                pl.col("gtex_tissue"),
+                pl.col("genetically_modified"),
+            ),
+            "variantBasedFeatures",
+            "geneBasedFeatures",
+            "spliceJunctionFeatures",
+        )
+        .group_by("variantId", "interval", "biosampleMetadata")
+        .agg(
+            pl.col("variantBasedFeatures"),
+            pl.col("geneBasedFeatures"),
+            pl.col("spliceJunctionFeatures"),
+        )
+        .select(
+            "variantId",
+            "interval",
+            "biosampleMetadata",
+            pl.col("variantBasedFeatures")
+            .list.eval(pl.element().explode().drop_nulls())
+            .list.filter(pl.element().is_not_null())
+            .alias("variantBasedFeatures"),
+            pl.col("geneBasedFeatures")
+            .list.eval(pl.element().explode().drop_nulls())
+            .list.filter(pl.element().is_not_null())
+            .alias("geneBasedFeatures"),
+            pl.col("spliceJunctionFeatures")
+            .list.eval(pl.element().explode().drop_nulls())
+            .list.filter(pl.element().is_not_null())
+            .alias("spliceJunctionFeatures"),
+        )
+        .unique()
+    )
 
-
-class ATACFormatter(Formatter):
-    pass
-
-
-class CAGEFormatter(Formatter):
-    pass
-
-
-class ChipHistoneFormatter(Formatter):
-    pass
-
-
-class ChipTFFormatter(Formatter):
-    pass
-
-
-class DNASEFormatter(Formatter):
-    pass
-
-
-class ContactMapsFormatter(Formatter):
-    pass
-
-
-class ProcapFormatter(Formatter):
-    pass
-
-
-class RNASeqFormatter(Formatter):
-    pass
-
-
-class SpliceJunctionsFormatter(Formatter):
-    pass
-
-
-class SpliceSiteUsageFormatter(Formatter):
-    pass
-
-
-class SpliceSitesFormatter(Formatter):
-    pass
-
-
-class OutputTypeMapper:
-    _mapping_ = {
-        OutputType.ATAC: ATACFormatter,
-        OutputType.CAGE: CAGEFormatter,
-        OutputType.CHIP_HISTONE: ChipHistoneFormatter,
-        OutputType.CHIP_TF: ChipTFFormatter,
-        OutputType.DNASE: DNASEFormatter,
-        OutputType.CONTACT_MAPS: ContactMapsFormatter,
-        OutputType.PROCAP: ProcapFormatter,
-        OutputType.RNA_SEQ: RNASeqFormatter,
-        OutputType.SPLICE_JUNCTIONS: SpliceJunctionsFormatter,
-        OutputType.SPLICE_SITE_USAGE: SpliceSiteUsageFormatter,
-        OutputType.SPLICE_SITES: SpliceSitesFormatter,
-    }
-
-    def format_anndata(
-        self, output_type: OutputType, annotation_result: AnnData
-    ) -> pl.DataFrame:
-        """Format the annotation result into a Polars DataFrame based on the output type.
-
-        :param output_type: The type of output to format.
-        :param annotation_result: Anndata object containing the annotations for each variant.
-
-        :return: Polars DataFrame containing the formatted annotations for each variant.
-        """
-        formatter_cls = self._mapping_.get(output_type)
-        if formatter_cls is None:
-            raise ValueError(f"Unsupported output type: {output_type}")
-        formatter = formatter_cls()
-        return formatter.format(annotation_result)
+    return parsed_tidy_data
