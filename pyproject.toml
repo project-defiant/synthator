@@ -16,6 +16,7 @@ dependencies = [
     "loguru>=0.7.3",
     "polars>=1.38.1",
     "pydantic>=2.12.5",
+    "ruff>=0.15.2",
     "typer>=0.23.1",
     "zarr[storage]>=3.1.5",
 ]
@@ -30,6 +31,9 @@ alphagenome-research = { git = "https://github.com/google-deepmind/alphagenome_r
 dev = [
     "debugpy>=1.8.20",
     "ipython>=9.10.0",
+    "pytest>=9.0.2",
+    "ruff>=0.15.2",
+    "ty>=0.0.18",
 ]
 
 [project.scripts]

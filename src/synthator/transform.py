@@ -217,120 +217,31 @@ def transform_output(tidy_data: pl.DataFrame) -> pl.DataFrame:
 
     :return: Polars DataFrame containing the transformed output data.
     """
-    vsc = parse_scorer(pl.col("variant_scorer")).alias("scorer")
-    parsed_tidy_data = (
-        tidy_data.select(
-            parse_variant_id(pl.col("variant_id")).alias("variantId"),
-            scored_interval_to_interval_struct(pl.col("scored_interval")).alias(
-                "interval"
-            ),
-            pl.when(
-                pl.col("gene_id").is_not_null() & pl.col("junction_Start").is_null()
-            ).then(
-                transform_gene_based_features(
-                    pl.col("gene_id"),
-                    pl.col("gene_name"),
-                    pl.col("gene_type"),
-                    pl.col("gene_strand"),
-                    pl.col("quantile_score"),
-                    pl.col("raw_score"),
-                    vsc,
-                )
-            ),
-            pl.when(
-                pl.col("gene_id").is_not_null() & pl.col("junction_Start").is_not_null()
-            ).then(
-                transform_junction_based_features(
-                    pl.col("gene_id"),
-                    pl.col("gene_name"),
-                    pl.col("gene_type"),
-                    pl.col("gene_strand"),
-                    pl.col("junction_Start"),
-                    pl.col("junction_End"),
-                    pl.col("quantile_score"),
-                    pl.col("raw_score"),
-                    vsc,
-                )
-            ),
-            pl.when(pl.col("gene_id").is_null()).then(
-                transform_variant_based_features(
-                    pl.col("quantile_score"), pl.col("raw_score"), vsc
-                )
-            ),
-            pl.col("track_name"),
-            pl.col("track_strand"),
-            pl.col("Assay title"),
-            pl.col("transcription_factor"),
-            pl.col("histone_mark"),
-            pl.col("endedness"),
-            pl.col("ontology_curie"),
-            pl.col("biosample_name"),
-            pl.col("biosample_type"),
-            pl.col("biosample_life_stage"),
-            pl.col("gtex_tissue"),
-            pl.col("genetically_modified"),
-            pl.col("data_source").alias("dataSource"),
-        )
-        .group_by(
-            "variantId",
-            "interval",
-            "track_name",
-            "track_strand",
-            "Assay title",
-            "transcription_factor",
-            "histone_mark",
-            "endedness",
-            "ontology_curie",
-            "biosample_name",
-            "biosample_type",
-            "biosample_life_stage",
-            "gtex_tissue",
-            "genetically_modified",
-        )
-        .agg(
-            pl.col("variantBasedFeatures"),
-            pl.col("geneBasedFeatures"),
-            pl.col("spliceJunctionFeatures"),
-        )
-        .select(
-            "variantId",
-            "interval",
-            capture_biosample(
-                pl.col("ontology_curie"),
-                pl.col("biosample_name"),
-                pl.col("biosample_type"),
-                pl.col("biosample_life_stage"),
-                pl.col("gtex_tissue"),
-                pl.col("genetically_modified"),
-            ),
-            "variantBasedFeatures",
-            "geneBasedFeatures",
-            "spliceJunctionFeatures",
-        )
-        .group_by("variantId", "interval", "biosampleMetadata")
-        .agg(
-            pl.col("variantBasedFeatures"),
-            pl.col("geneBasedFeatures"),
-            pl.col("spliceJunctionFeatures"),
-        )
-        .select(
-            "variantId",
-            "interval",
-            "biosampleMetadata",
-            pl.col("variantBasedFeatures")
-            .list.eval(pl.element().explode().drop_nulls())
-            .list.filter(pl.element().is_not_null())
-            .alias("variantBasedFeatures"),
-            pl.col("geneBasedFeatures")
-            .list.eval(pl.element().explode().drop_nulls())
-            .list.filter(pl.element().is_not_null())
-            .alias("geneBasedFeatures"),
-            pl.col("spliceJunctionFeatures")
-            .list.eval(pl.element().explode().drop_nulls())
-            .list.filter(pl.element().is_not_null())
-            .alias("spliceJunctionFeatures"),
-        )
-        .unique()
+    parsed_tidy_data = tidy_data.select(
+        parse_variant_id(pl.col("variant_id")).alias("variantId"),
+        scored_interval_to_interval_struct(pl.col("scored_interval")).alias("interval"),
+        parse_scorer(pl.col("variant_scorer")).alias("scorer"),
+        pl.col("raw_score").alias("rawScore"),
+        pl.col("quantile_score").alias("quantileScore"),
+        pl.col("data_source").alias("dataSource"),
+        pl.col("gene_id").alias("geneId"),
+        pl.col("ontology_curie").alias("ontologyCurie"),
+        pl.col("gene_name").alias("geneSymbol"),
+        pl.col("gene_type").alias("geneType"),
+        pl.col("gene_strand").alias("geneStrand"),
+        pl.col("junction_Start").alias("junctionStart"),
+        pl.col("junction_End").alias("junctionEnd"),
+        pl.col("track_name").alias("trackName"),
+        pl.col("track_strand").alias("trackStrand"),
+        pl.col("Assay title").alias("assayTitle"),
+        pl.col("biosample_name").alias("biosampleName"),
+        pl.col("biosample_type").alias("biosampleType"),
+        pl.col("biosample_life_stage").alias("biosampleLifeStage"),
+        pl.col("endedness").alias("endedness"),
+        pl.col("genetically_modified").alias("geneticallyModified"),
+        pl.col("transcription_factor").alias("transcriptionFactor"),
+        pl.col("histone_mark").alias("histoneMark"),
+        pl.col("gtex_tissue").alias("gtexTissue"),
     )
 
     return parsed_tidy_data
