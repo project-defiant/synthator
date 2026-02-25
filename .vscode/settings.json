@@ -1,0 +1,16 @@
+{
+    "cSpell.words": [
+      "rtype",
+      "Seqqurat"
+    ],
+    "python.analysis.typeCheckingMode": "standard",
+    "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnPaste": false,
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "never",
+      "source.organizeImports": "explicit"
+    }
+  }
+}

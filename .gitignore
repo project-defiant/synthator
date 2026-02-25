@@ -1,0 +1,6 @@
+variant
+my_file.pickle
+.python-version
+.venv
+data
+__pycache__

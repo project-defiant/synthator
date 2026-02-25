@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "synthator alpha-genome",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/.venv/bin/synthator",
+            "python": "${workspaceFolder}/.venv/bin/python3",
+            "args": [
+                "--variant-index-path", "variant",
+                "--api-key", "${env:ALPHA_GENOME_API_KEY}", 
+                "--test-mode"
+            ],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}
