@@ -1,6 +1,6 @@
 [project]
 name = "synthator"
-version = "1.0.5"
+version = "1.0.6"
 description = "Annotate variant index with Models."
 readme = "README.md"
 requires-python = ">=3.12"
