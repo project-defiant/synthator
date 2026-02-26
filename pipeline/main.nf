@@ -9,13 +9,13 @@ process SCORE_PARTITION {
     tag "${partition.name}"
     label 'synthator'
 
-    publishDir params.output, mode: 'copy'
+    publishDir "${params.output}/part_${partition_id}/*.parquet", mode: 'copy'
 
     input:
     path partition
 
     output:
-    path "${params.output}/part_${partition_id}/*.parquet"
+    path "${params.output}/part_${partition_id}*/*.parquet"
 
     script:
     // Extract the part-0000X from file name
