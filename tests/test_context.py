@@ -109,9 +109,7 @@ class TestContextualizedVariantFromVariant:
             alternate_bases="G",
             window_size=window,
         )
-        mock_variant_cls._mock_instance.reference_interval.resize.assert_called_once_with(
-            width=window
-        )
+        mock_variant_cls._mock_instance.reference_interval.resize.assert_called_once_with(width=window)
 
     def test_chromosome_passed_to_variant(self, mock_variant_cls: MagicMock) -> None:
         ContextualizedVariant.from_variant(

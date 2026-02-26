@@ -235,13 +235,15 @@ class TestTransformOutput:
         result = transform_output(sample_tidy_df)
         assert result["variantId"][0] == "1_12345_A_T"
 
-    def test_scorer_name_extracted(self, sample_tidy_df: pl.DataFrame) -> None:
+    def test_scorer_struct_fields(self, sample_tidy_df: pl.DataFrame) -> None:
         result = transform_output(sample_tidy_df)
-        assert result["scorer"][0]["scorerName"] == "CenterMaskScorer"
+        scorer = result["scorer"][0]
+        assert set(scorer.keys()) == {"name", "requestedOutput", "width", "aggregationType"}
 
-    def test_interval_chromosome(self, sample_tidy_df: pl.DataFrame) -> None:
+    def test_interval_struct_fields(self, sample_tidy_df: pl.DataFrame) -> None:
         result = transform_output(sample_tidy_df)
-        assert result["interval"][0]["chromosome"] == "1"
+        interval = result["interval"][0]
+        assert set(interval.keys()) == {"chr", "start", "end"}
 
     def test_camel_case_columns(self, sample_tidy_df: pl.DataFrame) -> None:
         result = transform_output(sample_tidy_df)
@@ -251,22 +253,12 @@ class TestTransformOutput:
             "scorer",
             "rawScore",
             "quantileScore",
+            "assay",
             "dataSource",
-            "geneId",
-            "ontologyCurie",
-            "geneSymbol",
-            "geneType",
-            "geneStrand",
-            "junctionStart",
-            "junctionEnd",
-            "trackName",
-            "trackStrand",
-            "assayTitle",
-            "biosampleName",
-            "biosampleType",
-            "biosampleLifeStage",
-            "endedness",
-            "geneticallyModified",
+            "geneFromSourceId",
+            "geneFromSourceSymbol",
+            "biosampleFromSource",
+            "junction",
             "transcriptionFactor",
             "histoneMark",
             "gtexTissue",

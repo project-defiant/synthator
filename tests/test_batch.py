@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import ANY, MagicMock, call, patch
 
+import grpc
 import pandas as pd
 import polars as pl
 import pytest
@@ -38,24 +39,18 @@ class TestContextualizedVariantBatch:
         batch = ContextualizedVariantBatch(interval_variants=[], batch_id="chr1_0")
         assert batch.interval_variants == []
 
-    def test_append_variant_increments_count(
-        self, mock_contextualized_variant: ContextualizedVariant
-    ) -> None:
+    def test_append_variant_increments_count(self, mock_contextualized_variant: ContextualizedVariant) -> None:
         batch = ContextualizedVariantBatch(interval_variants=[], batch_id="chr1_0")
         batch.append_variant(mock_contextualized_variant)
         assert batch.n_variants == 1
 
-    def test_append_variant_twice_increments_twice(
-        self, mock_contextualized_variant: ContextualizedVariant
-    ) -> None:
+    def test_append_variant_twice_increments_twice(self, mock_contextualized_variant: ContextualizedVariant) -> None:
         batch = ContextualizedVariantBatch(interval_variants=[], batch_id="chr1_0")
         batch.append_variant(mock_contextualized_variant)
         batch.append_variant(mock_contextualized_variant)
         assert batch.n_variants == 2
 
-    def test_append_variant_adds_to_list(
-        self, mock_contextualized_variant: ContextualizedVariant
-    ) -> None:
+    def test_append_variant_adds_to_list(self, mock_contextualized_variant: ContextualizedVariant) -> None:
         batch = ContextualizedVariantBatch(interval_variants=[], batch_id="chr1_0")
         batch.append_variant(mock_contextualized_variant)
         assert mock_contextualized_variant in batch.interval_variants
@@ -144,9 +139,7 @@ class TestVariantBatchGeneratorBatchVariantIndex:
     def test_from_variant_called_for_each_row(self, small_variant_index: pl.LazyFrame) -> None:
         mock_cv = MagicMock(spec=ContextualizedVariant)
 
-        with patch(
-            "synthator.batch.ContextualizedVariant.from_variant", return_value=mock_cv
-        ) as mock_from:
+        with patch("synthator.batch.ContextualizedVariant.from_variant", return_value=mock_cv) as mock_from:
             list(
                 VariantBatchGenerator.batch_variant_index(
                     variant_index=small_variant_index,
@@ -171,36 +164,105 @@ class TestAnnotateBatch:
         client.score_variants.return_value = mock_result
         return client, mock_result
 
-    def test_calls_score_variants(
-        self, mock_batch: ContextualizedVariantBatch, mock_client
-    ) -> None:
+    def test_calls_score_variants(self, mock_batch: ContextualizedVariantBatch, mock_client) -> None:
         client, _ = mock_client
         with patch("alphagenome.models.dna_client.create", return_value=client):
             annotate_batch(api_key="test-key", c_variants=mock_batch)
 
         expected_variants = [cv.variant for cv in mock_batch.interval_variants]
         expected_intervals = [cv.interval for cv in mock_batch.interval_variants]
-        client.score_variants.assert_called_once_with(
-            variants=expected_variants, intervals=expected_intervals
-        )
+        client.score_variants.assert_called_once_with(variants=expected_variants, intervals=expected_intervals)
 
-    def test_returns_score_variants_result(
-        self, mock_batch: ContextualizedVariantBatch, mock_client
-    ) -> None:
+    def test_returns_score_variants_result(self, mock_batch: ContextualizedVariantBatch, mock_client) -> None:
         client, mock_result = mock_client
         with patch("alphagenome.models.dna_client.create", return_value=client):
             result = annotate_batch(api_key="test-key", c_variants=mock_batch)
 
         assert result is mock_result
 
-    def test_creates_client_with_api_key(
-        self, mock_batch: ContextualizedVariantBatch, mock_client
-    ) -> None:
+    def test_creates_client_with_api_key(self, mock_batch: ContextualizedVariantBatch, mock_client) -> None:
         client, _ = mock_client
         with patch("alphagenome.models.dna_client.create", return_value=client) as mock_create:
             annotate_batch(api_key="my-secret-key", c_variants=mock_batch)
 
         mock_create.assert_called_once_with(api_key="my-secret-key", model_version=ANY)
+
+    def _make_rpc_error(self, status_code: grpc.StatusCode) -> grpc.RpcError:
+        """Create a grpc.RpcError that is also a grpc.Call (as real gRPC errors are)."""
+
+        class _FakeRpcError(grpc.RpcError, grpc.Call):
+            def code(self):
+                return status_code
+
+            def details(self):
+                return ""
+
+            def trailing_metadata(self):
+                return []
+
+            def initial_metadata(self):
+                return []
+
+        return _FakeRpcError()
+
+    def test_retries_on_resource_exhausted(self, mock_batch: ContextualizedVariantBatch) -> None:
+        mock_result = [[MagicMock()]]
+        rate_limit_error = self._make_rpc_error(grpc.StatusCode.RESOURCE_EXHAUSTED)
+        client = MagicMock()
+        client.score_variants.side_effect = [rate_limit_error, mock_result]
+
+        with (
+            patch("alphagenome.models.dna_client.create", return_value=client),
+            patch("synthator.batch.time.sleep") as mock_sleep,
+        ):
+            result = annotate_batch(api_key="key", c_variants=mock_batch, initial_wait=1.0)
+
+        assert result is mock_result
+        assert client.score_variants.call_count == 2
+        mock_sleep.assert_called_once_with(1.0)
+
+    def test_retry_uses_exponential_backoff(self, mock_batch: ContextualizedVariantBatch) -> None:
+        mock_result = [[MagicMock()]]
+        rate_limit_error = self._make_rpc_error(grpc.StatusCode.RESOURCE_EXHAUSTED)
+        client = MagicMock()
+        client.score_variants.side_effect = [rate_limit_error, rate_limit_error, mock_result]
+
+        with (
+            patch("alphagenome.models.dna_client.create", return_value=client),
+            patch("synthator.batch.time.sleep") as mock_sleep,
+        ):
+            annotate_batch(api_key="key", c_variants=mock_batch, initial_wait=10.0)
+
+        assert mock_sleep.call_args_list == [call(10.0), call(20.0)]
+
+    def test_raises_after_max_retries_exceeded(self, mock_batch: ContextualizedVariantBatch) -> None:
+        rate_limit_error = self._make_rpc_error(grpc.StatusCode.RESOURCE_EXHAUSTED)
+        client = MagicMock()
+        client.score_variants.side_effect = rate_limit_error
+
+        with (
+            patch("alphagenome.models.dna_client.create", return_value=client),
+            patch("synthator.batch.time.sleep"),
+        ):
+            with pytest.raises(grpc.RpcError):
+                annotate_batch(api_key="key", c_variants=mock_batch, max_retries=2, initial_wait=1.0)
+
+        assert client.score_variants.call_count == 3  # 1 initial + 2 retries
+
+    def test_does_not_retry_on_other_grpc_errors(self, mock_batch: ContextualizedVariantBatch) -> None:
+        permission_error = self._make_rpc_error(grpc.StatusCode.PERMISSION_DENIED)
+        client = MagicMock()
+        client.score_variants.side_effect = permission_error
+
+        with (
+            patch("alphagenome.models.dna_client.create", return_value=client),
+            patch("synthator.batch.time.sleep") as mock_sleep,
+        ):
+            with pytest.raises(grpc.RpcError):
+                annotate_batch(api_key="key", c_variants=mock_batch)
+
+        assert client.score_variants.call_count == 1
+        mock_sleep.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -216,27 +278,19 @@ class TestTransformBatch:
             {
                 "variant_id": ["chr1:12345:A>T"],
                 "scored_interval": ["chr1:1000-2000"],
-                "variant_scorer": [
-                    "CenterMaskScorer(requested_output=CHIP_TF, width=501, aggregation_type=ACTIVE_SUM)"
-                ],
+                "variant_scorer": ["CenterMaskScorer(requested_output=CHIP_TF, width=501, aggregation_type=ACTIVE_SUM)"],
                 "raw_score": [0.5],
                 "quantile_score": [0.8],
+                "Assay title": ["ChIP-seq"],
                 "data_source": ["ENCODE"],
                 "gene_id": ["ENSG00000001"],
-                "ontology_curie": ["CL:0000001"],
                 "gene_name": ["TP53"],
-                "gene_type": ["protein_coding"],
-                "gene_strand": ["+"],
-                "junction_Start": [None],
-                "junction_End": [None],
-                "track_name": ["track_1"],
-                "track_strand": ["+"],
-                "Assay title": ["ChIP-seq"],
+                "ontology_curie": ["CL:0000001"],
                 "biosample_name": ["K562"],
                 "biosample_type": ["cell line"],
                 "biosample_life_stage": ["adult"],
-                "endedness": ["single-ended"],
-                "genetically_modified": [False],
+                "junction_Start": [None],
+                "junction_End": [None],
                 "transcription_factor": ["CTCF"],
                 "histone_mark": [None],
                 "gtex_tissue": [None],
@@ -251,9 +305,7 @@ class TestTransformBatch:
 
     def test_calls_tidy_scores(self, tidy_pd: pd.DataFrame) -> None:
         annotation = [[MagicMock()]]
-        with patch(
-            "synthator.batch.variant_scorers.tidy_scores", return_value=tidy_pd
-        ) as mock_tidy:
+        with patch("synthator.batch.variant_scorers.tidy_scores", return_value=tidy_pd) as mock_tidy:
             transform_batch(annotation)
 
         mock_tidy.assert_called_once_with(annotation)
@@ -268,22 +320,12 @@ class TestTransformBatch:
             "scorer",
             "rawScore",
             "quantileScore",
+            "assay",
             "dataSource",
-            "geneId",
-            "ontologyCurie",
-            "geneSymbol",
-            "geneType",
-            "geneStrand",
-            "junctionStart",
-            "junctionEnd",
-            "trackName",
-            "trackStrand",
-            "assayTitle",
-            "biosampleName",
-            "biosampleType",
-            "biosampleLifeStage",
-            "endedness",
-            "geneticallyModified",
+            "geneFromSourceId",
+            "geneFromSourceSymbol",
+            "biosampleFromSource",
+            "junction",
             "transcriptionFactor",
             "histoneMark",
             "gtexTissue",
@@ -390,9 +432,7 @@ class TestBatchOutputExists:
 
 
 class TestProcessBatch:
-    def test_calls_annotate_transform_write_in_order(
-        self, mock_batch: ContextualizedVariantBatch
-    ) -> None:
+    def test_calls_annotate_transform_write_in_order(self, mock_batch: ContextualizedVariantBatch) -> None:
         mock_df = pl.DataFrame({"x": [1]})
         call_order: list[str] = []
 
@@ -416,9 +456,7 @@ class TestProcessBatch:
 
         assert call_order == ["annotate", "transform", "write"]
 
-    def test_annotate_called_with_correct_args(
-        self, mock_batch: ContextualizedVariantBatch
-    ) -> None:
+    def test_annotate_called_with_correct_args(self, mock_batch: ContextualizedVariantBatch) -> None:
         mock_df = pl.DataFrame({"x": [1]})
         with (
             patch("synthator.batch.annotate_batch", return_value=[[MagicMock()]]) as mock_ann,
