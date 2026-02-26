@@ -7,7 +7,7 @@ import typer
 from alphagenome.models import dna_client
 from loguru import logger
 
-from synthator.batch import VariantBatchGenerator, process_batch
+from synthator.batch import VariantBatchGenerator, batch_output_exists, process_batch
 from synthator.input import VariantSchema
 
 app = typer.Typer()
@@ -35,6 +35,10 @@ def cli(
     batch_window: Annotated[
         int, typer.Option(help="Number of variants to process in each batch.")
     ] = 10,
+    resume: Annotated[
+        bool,
+        typer.Option(help="Skip batches whose output file already exists."),
+    ] = False,
 ) -> None:
 
     logger.info(f"Using variant index from {variant_index_path}")
@@ -50,6 +54,9 @@ def cli(
         variant_index=_v, context_window=_cw, batch_window=batch_window
     )
     for i, _batch in enumerate(_iter):
+        if resume and batch_output_exists(output, _batch.batch_id):
+            logger.info(f"Skipping batch {i} (batch_id={_batch.batch_id}): output already exists.")
+            continue
         logger.info(f"Processing batch {i}.")
         logger.debug(f"Batch {i} contains {_batch.n_variants} variants.")
         logger.debug(f"Batch {i} has batch ID: {_batch.batch_id}")

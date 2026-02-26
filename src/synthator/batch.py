@@ -163,6 +163,24 @@ def write_batch(transformed_batch: pl.DataFrame, output_path: str, batch_id: str
     transformed_batch.write_parquet(f"{output_path}/batch_{batch_id}.parquet")
 
 
+def batch_output_exists(output_path: str, batch_id: str) -> bool:
+    """Check whether the output parquet file for a batch already exists.
+
+    :param output_path: Base output path. Supports local paths and GCS (gs://bucket/path).
+    :param batch_id: Batch ID used when writing the file.
+
+    :return: True if the output file already exists, False otherwise.
+    """
+    path = f"{output_path}/batch_{batch_id}.parquet"
+    if "://" not in output_path:
+        return Path(path).exists()
+    try:
+        pl.scan_parquet(path).limit(0).collect()
+        return True
+    except Exception:
+        return False
+
+
 def process_batch(api_key: str, c_variants: ContextualizedVariantBatch, output_path: str) -> None:
     """Process a batch of contextualized variants by annotating them and transforming the results.
 

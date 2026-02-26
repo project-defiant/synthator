@@ -13,6 +13,7 @@ from synthator.batch import (
     ContextualizedVariantBatch,
     VariantBatchGenerator,
     annotate_batch,
+    batch_output_exists,
     process_batch,
     transform_batch,
     write_batch,
@@ -301,6 +302,38 @@ class TestWriteBatch:
             write_batch(df, "gs://my-bucket/output", "chr1_0")
 
         mock_write.assert_called_once_with("gs://my-bucket/output/batch_chr1_0.parquet")
+
+
+# ---------------------------------------------------------------------------
+# batch_output_exists
+# ---------------------------------------------------------------------------
+
+
+class TestBatchOutputExists:
+    def test_returns_true_when_file_exists(self, tmp_path: Path) -> None:
+        df = pl.DataFrame({"x": [1]})
+        write_batch(df, str(tmp_path), "42")
+        assert batch_output_exists(str(tmp_path), "42") is True
+
+    def test_returns_false_when_file_missing(self, tmp_path: Path) -> None:
+        assert batch_output_exists(str(tmp_path), "99") is False
+
+    def test_gcs_returns_true_on_success(self) -> None:
+        mock_lf = MagicMock()
+        mock_lf.limit.return_value.collect.return_value = MagicMock()
+        with patch("synthator.batch.pl.scan_parquet", return_value=mock_lf):
+            assert batch_output_exists("gs://my-bucket/output", "42") is True
+
+    def test_gcs_returns_false_on_error(self) -> None:
+        with patch("synthator.batch.pl.scan_parquet", side_effect=Exception("not found")):
+            assert batch_output_exists("gs://my-bucket/output", "42") is False
+
+    def test_gcs_checks_correct_path(self) -> None:
+        mock_lf = MagicMock()
+        mock_lf.limit.return_value.collect.return_value = MagicMock()
+        with patch("synthator.batch.pl.scan_parquet", return_value=mock_lf) as mock_scan:
+            batch_output_exists("gs://bucket/out", "7")
+        mock_scan.assert_called_once_with("gs://bucket/out/batch_7.parquet")
 
 
 # ---------------------------------------------------------------------------
