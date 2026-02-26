@@ -212,12 +212,35 @@ class TestAnnotateBatch:
 class TestTransformBatch:
     @pytest.fixture()
     def tidy_pd(self) -> pd.DataFrame:
-        """Minimal pandas DataFrame matching real tidy_scores output."""
+        """Pandas DataFrame matching real tidy_scores output with all columns required by transform_output."""
         return pd.DataFrame(
             {
-                "variant_id": [123, 456],  # int — will be cast to str
-                "scored_interval": [789, 101],  # int — will be cast to str
-                "raw_score": [0.1, 0.2],
+                "variant_id": ["chr1:12345:A>T"],
+                "scored_interval": ["chr1:1000-2000"],
+                "variant_scorer": [
+                    "CenterMaskScorer(requested_output=CHIP_TF, width=501, aggregation_type=ACTIVE_SUM)"
+                ],
+                "raw_score": [0.5],
+                "quantile_score": [0.8],
+                "data_source": ["ENCODE"],
+                "gene_id": ["ENSG00000001"],
+                "ontology_curie": ["CL:0000001"],
+                "gene_name": ["TP53"],
+                "gene_type": ["protein_coding"],
+                "gene_strand": ["+"],
+                "junction_Start": [None],
+                "junction_End": [None],
+                "track_name": ["track_1"],
+                "track_strand": ["+"],
+                "Assay title": ["ChIP-seq"],
+                "biosample_name": ["K562"],
+                "biosample_type": ["cell line"],
+                "biosample_life_stage": ["adult"],
+                "endedness": ["single-ended"],
+                "genetically_modified": [False],
+                "transcription_factor": ["CTCF"],
+                "histone_mark": [None],
+                "gtex_tissue": [None],
             }
         )
 
@@ -236,28 +259,36 @@ class TestTransformBatch:
 
         mock_tidy.assert_called_once_with(annotation)
 
-    def test_dataframe_columns_from_tidy(self, tidy_pd: pd.DataFrame) -> None:
+    def test_dataframe_columns_from_transform_output(self, tidy_pd: pd.DataFrame) -> None:
         with patch("synthator.batch.variant_scorers.tidy_scores", return_value=tidy_pd):
             result = transform_batch([[MagicMock()]])
 
-        assert set(result.columns) == {"variant_id", "scored_interval", "raw_score"}
+        expected_columns = {
+            "variantId", "interval", "scorer", "rawScore", "quantileScore",
+            "dataSource", "geneId", "ontologyCurie", "geneSymbol", "geneType",
+            "geneStrand", "junctionStart", "junctionEnd", "trackName", "trackStrand",
+            "assayTitle", "biosampleName", "biosampleType", "biosampleLifeStage",
+            "endedness", "geneticallyModified", "transcriptionFactor", "histoneMark",
+            "gtexTissue",
+        }
+        assert set(result.columns) == expected_columns
 
     def test_raises_if_tidy_scores_returns_none(self) -> None:
         with patch("synthator.batch.variant_scorers.tidy_scores", return_value=None):
             with pytest.raises(AssertionError, match="No data returned"):
                 transform_batch([[MagicMock()]])
 
-    def test_variant_id_cast_to_string(self, tidy_pd: pd.DataFrame) -> None:
+    def test_variant_id_parsed_to_string(self, tidy_pd: pd.DataFrame) -> None:
         with patch("synthator.batch.variant_scorers.tidy_scores", return_value=tidy_pd):
             result = transform_batch([[MagicMock()]])
 
-        assert result["variant_id"].dtype == pl.String
+        assert result["variantId"].dtype == pl.String
 
-    def test_scored_interval_cast_to_string(self, tidy_pd: pd.DataFrame) -> None:
+    def test_scored_interval_parsed_to_struct(self, tidy_pd: pd.DataFrame) -> None:
         with patch("synthator.batch.variant_scorers.tidy_scores", return_value=tidy_pd):
             result = transform_batch([[MagicMock()]])
 
-        assert result["scored_interval"].dtype == pl.String
+        assert isinstance(result["interval"].dtype, pl.Struct)
 
 
 # ---------------------------------------------------------------------------

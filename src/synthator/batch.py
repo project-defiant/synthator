@@ -10,7 +10,7 @@ from alphagenome.models import variant_scorers
 from loguru import logger
 
 from synthator.context import ContextualizedVariant
-from synthator.transform import ensembl_to_ucsc
+from synthator.transform import ensembl_to_ucsc, transform_output
 
 
 @dataclass
@@ -148,7 +148,7 @@ def transform_batch(annotation_result: list[list[ad.AnnData]]) -> pl.DataFrame:
     data["scored_interval"] = data["scored_interval"].astype(str)
     d = pl.DataFrame(data)
     logger.success("Successfully transformed annotation results into Polars DataFrame.")
-    return d
+    return transform_output(d)
 
 
 def write_batch(transformed_batch: pl.DataFrame, output_path: str, batch_id: str) -> None:
