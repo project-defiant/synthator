@@ -12,3 +12,4 @@ covarage.xml
 .nextflow.log
 .nextflow.log*
 coverage.xml
+memory

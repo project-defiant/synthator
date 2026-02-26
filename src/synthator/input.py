@@ -5,13 +5,6 @@ from enum import StrEnum
 import polars as pl
 
 
-class AlphaGenomeOutputSchema(StrEnum):
-    """Alpha Genome output schema."""
-
-    VARIANT_EFFECT = "variant_effect"
-    GENE_VARIANT_EFFECT = "gene_variant_effect"
-
-
 class VariantField(StrEnum):
     """Variant field names."""
 

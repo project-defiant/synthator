@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import time
 from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
 
 import anndata as ad
+import grpc
 import polars as pl
 from alphagenome.models import variant_scorers
 from loguru import logger
@@ -48,15 +50,14 @@ class VariantBatchGenerator:
         :return: Batch ID as a string expression.
 
         :example:
-        For a batch window of 10, variants with row numbers 0-9 will have batch ID "0", variants with row numbers 10-19 will have batch ID "1", and so on.
+        For a batch window of 10, variants with row numbers 0-9 will have batch ID
+        "0", variants with row numbers 10-19 will have batch ID "1", and so on.
 
         """
         return (row_number // batch_window).alias("batchId")
 
     @classmethod
-    def _aggregate_variants_by_batch(
-        cls, variant_index: pl.LazyFrame, batch_window: int
-    ) -> pl.LazyFrame:
+    def _aggregate_variants_by_batch(cls, variant_index: pl.LazyFrame, batch_window: int) -> pl.LazyFrame:
         """Aggregate variants into batches based on their row number.
 
         :param variant_index: LazyFrame containing the variant index.
@@ -116,11 +117,20 @@ class VariantBatchGenerator:
             yield ContextualizedVariantBatch(interval_variants=interval_variants, batch_id=batch_id)
 
 
-def annotate_batch(api_key: str, c_variants: ContextualizedVariantBatch) -> list[list[ad.Anndata]]:
+def annotate_batch(
+    api_key: str,
+    c_variants: ContextualizedVariantBatch,
+    max_retries: int = 5,
+    initial_wait: float = 60.0,
+) -> list[list[ad.Anndata]]:
     """Annotate a batch of variants with DNA client scores.
+
+    Retries on rate-limit errors (RESOURCE_EXHAUSTED) with exponential backoff.
 
     :param api_key: API key for the DNA client.
     :param c_variants: Batch of contextualized variants to annotate.
+    :param max_retries: Maximum number of retry attempts on rate-limit errors.
+    :param initial_wait: Seconds to wait before the first retry (doubles each attempt).
 
     :return: List of lists of Anndata objects containing the annotations for each variant.
     """
@@ -130,8 +140,21 @@ def annotate_batch(api_key: str, c_variants: ContextualizedVariantBatch) -> list
     client = dna_client.create(api_key=api_key, model_version=_model_version)
     variants = [cv.variant for cv in c_variants.interval_variants]
     intervals = [cv.interval for cv in c_variants.interval_variants]
-    results = client.score_variants(variants=variants, intervals=intervals)
-    return results
+
+    wait = initial_wait
+    for attempt in range(max_retries + 1):
+        try:
+            return client.score_variants(variants=variants, intervals=intervals)
+        except grpc.RpcError as e:
+            rpc_call = e if isinstance(e, grpc.Call) else None
+            is_rate_limit = rpc_call is not None and rpc_call.code() == grpc.StatusCode.RESOURCE_EXHAUSTED
+            if is_rate_limit and attempt < max_retries:
+                logger.warning(f"Rate limit hit for batch {c_variants.batch_id} (attempt {attempt + 1}/{max_retries}). Retrying in {wait:.0f}s.")
+                time.sleep(wait)
+                wait *= 2
+                continue
+            raise
+    raise AssertionError("unreachable")
 
 
 def transform_batch(annotation_result: list[list[ad.AnnData]]) -> pl.DataFrame:

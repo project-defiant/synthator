@@ -9,13 +9,13 @@ process SCORE_PARTITION {
     tag "${partition.name}"
     label 'synthator'
 
-    publishDir "${params.output}/part_${partition_id}/*.parquet", mode: 'copy'
+    publishDir "${params.output}/part_${partition_id}", mode: 'copy', pattern: '*.parquet'
 
     input:
     path partition
 
     output:
-    path "${params.output}/part_${partition_id}*/*.parquet"
+    path "part_${partition_id}/*.parquet"
 
     script:
     // Extract the part-0000X from file name
@@ -24,7 +24,7 @@ process SCORE_PARTITION {
     synthator \\
         --variant-index-path "${partition}" \\
         --api-key "${params.api_key}" \\
-        --output "${params.output}/part_${partition_id}" \\
+        --output "part_${partition_id}" \\
         --batch-window ${params.batch_window} \\
         --test-mode
     """
@@ -33,6 +33,7 @@ process SCORE_PARTITION {
 // ---------------------------------------------------------------------------
 // Workflow
 // ---------------------------------------------------------------------------
+
 
 workflow {
     // Parameter validation (must be inside workflow in DSL2)
@@ -46,16 +47,15 @@ workflow {
         error("Missing required parameter: --output  (e.g. gs://bucket/results/)")
     }
 
+
     // Build channel — one item per Spark partition file
     def index_base = params.variant_index.replaceAll('/+$', '')
 
     def partitions_ch = channel.fromPath("${index_base}/*.parquet")
         .ifEmpty { error("No part.*.parquet files found at: ${index_base}") }
-        .filter { it -> it.name.startsWith("part-00000") }
 
-    SCORE_PARTITION(partitions_ch)
 
-    SCORE_PARTITION.out
-        .flatten()
-        .subscribe { f -> log.info("Scored partition written: ${f}") }
+    result = SCORE_PARTITION(partitions_ch)
+
+    result.subscribe { f -> log.info("Scored partition written: ${f}") }
 }

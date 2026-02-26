@@ -34,9 +34,7 @@ def mock_variant(mock_interval: MagicMock) -> MagicMock:
 
 
 @pytest.fixture()
-def mock_contextualized_variant(
-    mock_interval: MagicMock, mock_variant: MagicMock
-) -> ContextualizedVariant:
+def mock_contextualized_variant(mock_interval: MagicMock, mock_variant: MagicMock) -> ContextualizedVariant:
     return ContextualizedVariant(interval=mock_interval, variant=mock_variant)
 
 
@@ -75,27 +73,19 @@ def sample_tidy_df() -> pl.DataFrame:
         {
             "variant_id": ["chr1:12345:A>T"],
             "scored_interval": ["chr1:1000-2000"],
-            "variant_scorer": [
-                "CenterMaskScorer(requested_output=CHIP_TF, width=501, aggregation_type=ACTIVE_SUM)"
-            ],
+            "variant_scorer": ["CenterMaskScorer(requested_output=CHIP_TF, width=501, aggregation_type=ACTIVE_SUM)"],
             "raw_score": [0.5],
             "quantile_score": [0.8],
+            "Assay title": ["ChIP-seq"],
             "data_source": ["ENCODE"],
             "gene_id": ["ENSG00000001"],
-            "ontology_curie": ["CL:0000001"],
             "gene_name": ["TP53"],
-            "gene_type": ["protein_coding"],
-            "gene_strand": ["+"],
-            "junction_Start": [None],
-            "junction_End": [None],
-            "track_name": ["track_1"],
-            "track_strand": ["+"],
-            "Assay title": ["ChIP-seq"],
+            "ontology_curie": ["CL:0000001"],
             "biosample_name": ["K562"],
             "biosample_type": ["cell line"],
             "biosample_life_stage": ["adult"],
-            "endedness": ["single-ended"],
-            "genetically_modified": [False],
+            "junction_Start": [None],
+            "junction_End": [None],
             "transcription_factor": ["CTCF"],
             "histone_mark": [None],
             "gtex_tissue": [None],
