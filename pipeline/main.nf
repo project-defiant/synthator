@@ -9,17 +9,19 @@ process SCORE_PARTITION {
     tag "${partition.name}"
     label 'synthator'
 
-    publishDir "${params.output}/part_${partition_id}", mode: 'copy', pattern: '*.parquet'
+    publishDir "${params.output}", mode: 'copy', pattern: 'part_*/*.parquet'
 
     input:
     path partition
 
     output:
-    path "part_${partition_id}/*.parquet"
+    path "part_*/*.parquet"
+
 
     script:
+    def partition_id = partition.name.replaceAll('^part-(\\d{5}).*parquet$', '$1')
+
     // Extract the part-0000X from file name
-    partition_id = partition.name.replaceAll('^part-(\\d{5}).*parquet$', '$1')
     """
     synthator \\
         --variant-index-path "${partition}" \\
