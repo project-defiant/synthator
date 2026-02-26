@@ -141,11 +141,13 @@ def transform_batch(annotation_result: list[list[ad.AnnData]]) -> pl.DataFrame:
 
     :return: Polars DataFrame containing the transformed annotations for each variant.
     """
+    logger.info("Transforming annotation results into Polars DataFrame.")
     data = variant_scorers.tidy_scores(annotation_result)
     assert data is not None, "No data returned from variant scorers."
     data["variant_id"] = data["variant_id"].astype(str)
     data["scored_interval"] = data["scored_interval"].astype(str)
     d = pl.DataFrame(data)
+    logger.success("Successfully transformed annotation results into Polars DataFrame.")
     return d
 
 
@@ -158,9 +160,12 @@ def write_batch(transformed_batch: pl.DataFrame, output_path: str, batch_id: str
 
     :return: None
     """
+    logger.info(f"Writing batch {batch_id} to {output_path}.")
     if "://" not in output_path:
+        logger.info(f"Creating local directory {output_path} if it does not exist.")
         Path(output_path).mkdir(parents=True, exist_ok=True)
     transformed_batch.write_parquet(f"{output_path}/batch_{batch_id}.parquet")
+    logger.success(f"Successfully wrote batch {batch_id} to {output_path}.")
 
 
 def batch_output_exists(output_path: str, batch_id: str) -> bool:
@@ -171,13 +176,16 @@ def batch_output_exists(output_path: str, batch_id: str) -> bool:
 
     :return: True if the output file already exists, False otherwise.
     """
+    logger.info(f"Checking if output for batch {batch_id} already exists at {output_path}.")
     path = f"{output_path}/batch_{batch_id}.parquet"
     if "://" not in output_path:
         return Path(path).exists()
     try:
         pl.scan_parquet(path).limit(0).collect()
+        logger.info(f"Output for batch {batch_id} exists at {output_path}.")
         return True
     except Exception:
+        logger.info(f"Output for batch {batch_id} does not exist at {output_path}.")
         return False
 
 
@@ -190,6 +198,8 @@ def process_batch(api_key: str, c_variants: ContextualizedVariantBatch, output_p
 
     :return: None
     """
+    logger.info(f"Processing batch {c_variants.batch_id} with {c_variants.n_variants} variants.")
     annotation_result = annotate_batch(api_key, c_variants)
     transformed_result = transform_batch(annotation_result)
     write_batch(transformed_result, output_path, c_variants.batch_id)
+    logger.success(f"Successfully processed batch {c_variants.batch_id}.")
