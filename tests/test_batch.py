@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import ANY, MagicMock, call, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pandas as pd
 import polars as pl
@@ -19,7 +19,6 @@ from synthator.batch import (
     write_batch,
 )
 from synthator.context import ContextualizedVariant
-
 
 # ---------------------------------------------------------------------------
 # ContextualizedVariantBatch
