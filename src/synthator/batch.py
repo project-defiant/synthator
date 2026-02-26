@@ -39,26 +39,25 @@ class VariantBatchGenerator:
     """Generator for batches of interval-variant pairs."""
 
     @staticmethod
-    def _batch_id(chr: pl.Expr, pos: pl.Expr, batch_window: int) -> pl.Expr:
-        """Generate a batch ID for a variant based on its chromosome and position.
+    def _batch_id(row_number: pl.Expr, batch_window: int) -> pl.Expr:
+        """Generate a batch ID for a variant based on its row number.
 
-        :param chr: Chromosome of the variant.
-        :param pos: Position of the variant.
+        :param row_number: Row number of the variant.
         :param batch_window: Size of the window to batch variants together.
 
         :return: Batch ID as a string expression.
+
+        :example:
+        For a batch window of 10, variants with row numbers 0-9 will have batch ID "0", variants with row numbers 10-19 will have batch ID "1", and so on.
+
         """
-        return pl.concat_str(
-            chr,
-            (pos / batch_window).floor().cast(pl.Int64),
-            separator="_",
-        ).cast(pl.Categorical())
+        return (row_number // batch_window).alias("batchId")
 
     @classmethod
     def _aggregate_variants_by_batch(
         cls, variant_index: pl.LazyFrame, batch_window: int
     ) -> pl.LazyFrame:
-        """Aggregate variants into batches based on their chromosome and position.
+        """Aggregate variants into batches based on their row number.
 
         :param variant_index: LazyFrame containing the variant index.
         :param batch_window: Size of the window to batch variants together.
@@ -66,10 +65,11 @@ class VariantBatchGenerator:
         :return: LazyFrame with variants aggregated into batches.
         """
         return (
-            variant_index.with_columns(
+            variant_index.sort("chromosome", "position", "referenceAllele", "alternateAllele")
+            .with_row_index(name="rowNumber")
+            .with_columns(
                 batchId=cls._batch_id(
-                    pl.col("chromosome"),
-                    pl.col("position"),
+                    pl.col("rowNumber"),
                     batch_window,
                 )
             )

@@ -49,6 +49,7 @@ workflow {
 
     def partitions_ch = channel.fromPath("${index_base}/*.parquet")
         .ifEmpty { error("No part.*.parquet files found at: ${index_base}") }
+        .filter { it -> it.name.startsWith("part-00000") }
 
     SCORE_PARTITION(partitions_ch)
 

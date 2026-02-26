@@ -75,33 +75,28 @@ class TestContextualizedVariantBatch:
 
 
 class TestVariantBatchGeneratorBatchId:
-    def test_produces_categorical_column(self) -> None:
-        df = pl.DataFrame({"chr": ["1", "1"], "pos": [100, 150]})
-        result = df.select(
-            VariantBatchGenerator._batch_id(pl.col("chr"), pl.col("pos"), 100).alias("bid")
-        )
-        assert result["bid"].dtype == pl.Categorical
+    def test_produces_integer_column(self) -> None:
+        df = pl.DataFrame({"rowNumber": [0, 1]})
+        result = df.select(VariantBatchGenerator._batch_id(pl.col("rowNumber"), 10))
+        assert result["batchId"].dtype in (pl.Int32, pl.Int64, pl.UInt32, pl.UInt64)
 
-    def test_same_window_produces_same_id(self) -> None:
-        df = pl.DataFrame({"chr": ["1", "1"], "pos": [100, 150]})
-        result = df.select(
-            VariantBatchGenerator._batch_id(pl.col("chr"), pl.col("pos"), 100).alias("bid")
-        )
-        assert result["bid"][0] == result["bid"][1]
+    def test_rows_in_same_window_produce_same_id(self) -> None:
+        # Rows 0 and 9 are both in batch 0 for window=10
+        df = pl.DataFrame({"rowNumber": [0, 9]})
+        result = df.select(VariantBatchGenerator._batch_id(pl.col("rowNumber"), 10))
+        assert result["batchId"][0] == result["batchId"][1]
 
-    def test_different_windows_produce_different_ids(self) -> None:
-        df = pl.DataFrame({"chr": ["1", "1"], "pos": [0, 200]})
-        result = df.select(
-            VariantBatchGenerator._batch_id(pl.col("chr"), pl.col("pos"), 100).alias("bid")
-        )
-        assert result["bid"][0] != result["bid"][1]
+    def test_rows_in_different_windows_produce_different_ids(self) -> None:
+        # Row 0 → batch 0, row 10 → batch 1 for window=10
+        df = pl.DataFrame({"rowNumber": [0, 10]})
+        result = df.select(VariantBatchGenerator._batch_id(pl.col("rowNumber"), 10))
+        assert result["batchId"][0] != result["batchId"][1]
 
-    def test_different_chromosomes_produce_different_ids(self) -> None:
-        df = pl.DataFrame({"chr": ["1", "2"], "pos": [100, 100]})
-        result = df.select(
-            VariantBatchGenerator._batch_id(pl.col("chr"), pl.col("pos"), 100).alias("bid")
-        )
-        assert result["bid"][0] != result["bid"][1]
+    def test_batch_id_is_floor_division(self) -> None:
+        # batch = row_number // batch_window
+        df = pl.DataFrame({"rowNumber": [0, 5, 10, 15, 20]})
+        result = df.select(VariantBatchGenerator._batch_id(pl.col("rowNumber"), 10))
+        assert list(result["batchId"]) == [0, 0, 1, 1, 2]
 
 
 class TestVariantBatchGeneratorBatchVariantIndex:
