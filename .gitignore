@@ -11,3 +11,4 @@ covarage.xml
 .nextflow
 .nextflow.log
 .nextflow.log*
+coverage.xml
