@@ -17,7 +17,6 @@ process SCORE_PARTITION {
     output:
     path "part_*/*.parquet"
 
-
     script:
     def partition_id = partition.name.replaceAll('^part-(\\d{5}).*parquet$', '$1')
 
@@ -28,7 +27,8 @@ process SCORE_PARTITION {
         --api-key "${params.api_key}" \\
         --output "part_${partition_id}" \\
         --batch-window ${params.batch_window} \\
-        --test-mode
+        --test-mode \\
+        --resume
     """
 }
 
@@ -55,6 +55,7 @@ workflow {
 
     def partitions_ch = channel.fromPath("${index_base}/*.parquet")
         .ifEmpty { error("No part.*.parquet files found at: ${index_base}") }
+        .filter { it -> it.name.matches('^part-00000.*\\.parquet$') }
 
 
     result = SCORE_PARTITION(partitions_ch)
