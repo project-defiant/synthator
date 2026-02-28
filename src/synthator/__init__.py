@@ -19,7 +19,7 @@ def cli(
         str,
         typer.Option(help="Path to variant index. Supports local paths and GCS globs (gs://bucket/path/*.parquet)."),
     ],
-    api_key: Annotated[str, typer.Option(help="API key.")],
+    api_key: Annotated[str | None, typer.Option(help="API key. If provided the scoring will be done via api instead of local model.")] = None, 
     context_window: Annotated[int, typer.Option(help="Sequence length to use for predictions.")] = 2**20,
     output: Annotated[
         str,
@@ -34,6 +34,7 @@ def cli(
         bool,
         typer.Option(help="Skip batches whose output file already exists."),
     ] = False,
+    score_with_model: Annotated[bool, typer.Option(help="Whether to score variants with the model (requires API key).")] = True,
 ) -> None:
 
     logger.info(f"Using variant index from {variant_index_path}")
@@ -53,7 +54,12 @@ def cli(
         logger.info(f"Processing batch {i}.")
         logger.debug(f"Batch {i} contains {_batch.n_variants} variants.")
         logger.debug(f"Batch {i} has batch ID: {_batch.batch_id}")
-        process_batch(api_key=api_key, c_variants=_batch, output_path=output)
+        if api_key is not None:
+            logger.info("Scoring variants with API key.")
+            process_batch(api_key=api_key, c_variants=_batch, output_path=output)
+        else:
+            logger.info("Scoring variants with local model.")
+            process_batch(c_variants=_batch, output_path=output, api_key=None)
         logger.success(f"Finished processing batch {i}.")
         if i >= 1 and test_mode:
             logger.info("Stopping after 2 batches for testing purposes.")

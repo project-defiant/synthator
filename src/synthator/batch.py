@@ -9,6 +9,7 @@ import anndata as ad
 import grpc
 import polars as pl
 from alphagenome.models import variant_scorers
+from alphagenome_research.model import dna_model
 from loguru import logger
 
 from synthator.context import ContextualizedVariant
@@ -117,6 +118,59 @@ class VariantBatchGenerator:
             yield ContextualizedVariantBatch(interval_variants=interval_variants, batch_id=batch_id)
 
 
+def _setup_model() -> dna_model.AlphaGenomeModel:
+    """Set up the local model for scoring variants.
+
+    This function can be used to load the model into memory before processing batches,
+    which can help reduce latency for the first batch.
+
+    The model if loaded from Hugging Face Hub and requires authentication with a token set in the HF_TOKEN environment variable.
+
+    :return: None
+    """
+    logger.info("Setting up local model for variant scoring.")
+    import jax
+
+    devices = jax.devices("gpu")
+    if not devices:
+        raise RuntimeError("No GPU devices found for local model. A GPU is required to run the local model.")
+    import os
+
+    import huggingface_hub as hf_hub
+
+    token = os.getenv("HF_TOKEN")
+    if not token:
+        raise RuntimeError("HF_TOKEN environment variable not set. This is required to authenticate with Hugging Face Hub to download the model.")
+
+    hf_hub.login(token=token)
+
+    os.environ["TF_GPU_ALLOCATOR"] = "cud`a_malloc_async"
+    model = dna_model.create_from_huggingface("all_folds")
+
+    return model
+
+
+def score_variants_locally(
+    c_variants: ContextualizedVariantBatch,
+) -> list[list[ad.AnnData]]:
+    """Score a batch of contextualized variants using the local model.
+
+    :param c_variants: Batch of contextualized variants to score.
+
+    :return: List of lists of Anndata objects containing the annotations for each variant.
+    """
+    logger.info(f"Scoring batch {c_variants.batch_id} with local model.")
+    variants = [cv.variant for cv in c_variants.interval_variants]
+    intervals = [cv.interval for cv in c_variants.interval_variants]
+    if globals().get("_local_model") is None:
+        globals().setdefault("_local_model", _setup_model())
+    model: dna_model.AlphaGenomeModel = globals()["_local_model"]
+    annotation_result = model.score_variants(variants=variants, intervals=intervals)
+
+    logger.success(f"Successfully scored batch {c_variants.batch_id} with local model.")
+    return annotation_result
+
+
 def annotate_batch(
     api_key: str,
     c_variants: ContextualizedVariantBatch,
@@ -212,17 +266,22 @@ def batch_output_exists(output_path: str, batch_id: str) -> bool:
         return False
 
 
-def process_batch(api_key: str, c_variants: ContextualizedVariantBatch, output_path: str) -> None:
+def process_batch(c_variants: ContextualizedVariantBatch, output_path: str, api_key: str | None = None) -> None:
     """Process a batch of contextualized variants by annotating them and transforming the results.
 
-    :param api_key: API key for the DNA client.
     :param c_variants: Batch of contextualized variants to process.
+    :param api_key: API key for the DNA client. If None, the local model will be used.
     :param output_path: Path to write the output data. Supports local paths and GCS (gs://bucket/path).
 
     :return: None
     """
     logger.info(f"Processing batch {c_variants.batch_id} with {c_variants.n_variants} variants.")
-    annotation_result = annotate_batch(api_key, c_variants)
+    if api_key is None:
+        logger.info("Scoring variants with local model.")
+        annotation_result = score_variants_locally(c_variants)
+    else:
+        logger.info("Scoring variants with API key.")
+        annotation_result = annotate_batch(api_key, c_variants)
     transformed_result = transform_batch(annotation_result)
     write_batch(transformed_result, output_path, c_variants.batch_id)
     logger.success(f"Successfully processed batch {c_variants.batch_id}.")

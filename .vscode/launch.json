@@ -15,6 +15,20 @@
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
             "justMyCode": true
+        },
+        {
+            "name": "synthator alpha-genome local model",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/.venv/bin/synthator",
+            "python": "${workspaceFolder}/.venv/bin/python3",
+            "args": [
+                "--variant-index-path", "variant",
+                "--test-mode"
+            ],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": true
         }
     ]
 }
